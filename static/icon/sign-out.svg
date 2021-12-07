@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30">
+  <g id="sign-out" transform="translate(-3 -3)">
+    <path id="Path_23" data-name="Path 23" d="M13.5,31.5h-6a3,3,0,0,1-3-3V7.5a3,3,0,0,1,3-3h6" fill="none" stroke="#7b1aff" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/>
+    <path id="Path_24" data-name="Path 24" d="M24,25.5,31.5,18,24,10.5" fill="none" stroke="#7b1aff" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/>
+    <path id="Path_25" data-name="Path 25" d="M31.5,18h-18" fill="none" stroke="#7b1aff" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/>
+  </g>
+</svg>
