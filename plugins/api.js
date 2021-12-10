@@ -1,3 +1,4 @@
+import https from 'https';
 export default function ({ $axios, app }, inject) {
   // Create axios instance
   const api = $axios.create({
@@ -7,12 +8,16 @@ export default function ({ $axios, app }, inject) {
       },
     },
   })
+  const agent = new https.Agent({
+    rejectUnauthorized: false
+  });
   // Create interceptor to add the user's token.
   api.onRequest((config) => {
     if (app.$auth.loggedIn) {
       const token = app.$auth.strategy.token.get().split(' ')[1] // Get the token only
       api.setToken(token, 'Bearer') // Bearer token
     }
+    config.httpsAgent = agent;
     return config
   })
 

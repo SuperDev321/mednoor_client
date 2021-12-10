@@ -4,23 +4,20 @@
     <div id="app-content">
       <Nuxt></Nuxt>
     </div>
-    <MFooter></MFooter>
   </div>
 </template>
 
 <script>
 import Navbar from '~/components/Navbar'
-import MFooter from '~/components/MFooter'
 import authMixin from '~/mixins/authMixin'
 import listenMixin from '~/mixins/listenMixin'
 import userUpdatedMixin from '~/mixins/userUpdatedMixin'
 import chatMixin from '~/mixins/chatMixin'
 
 export default {
-  name: 'Default',
+  name: 'video chat',
   components: {
     Navbar,
-    MFooter
   },
   mixins: [authMixin, listenMixin, userUpdatedMixin, chatMixin],
   data: ()=>({
@@ -53,7 +50,9 @@ export default {
 
 <style lang='sass'>
 body
-  overflow-y: auto
+  overflow: hidden
 #app-content
-  margin-top: 50px
+  margin: 0
+  padding-top: 50px
+  height: 100vh
 </style>

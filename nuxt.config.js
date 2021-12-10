@@ -135,6 +135,10 @@ export default {
         url: process.env.API_URL,
         default: true,
       },
+      {
+        name: 'media',
+        url: process.env.MEDIA_URL,
+      }
     ],
   },
 

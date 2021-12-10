@@ -11,16 +11,32 @@ const _EVENTS = {
   startAudio: 'startAudio',
   stopAudio: 'stopAudio',
   startScreen: 'startScreen',
-  stopScreen: 'stopScreen'
+  stopScreen: 'stopScreen',
+  startRemoteMedia: 'startRemoteMedia',
+  stopRemoteMedia: 'stopRemoteMedia',
 }
 
-class RoomClient {
-  constructor(localMediaEl, remoteVideoEl, remoteAudioEl, mediasoupClient, socket, roomId, name, successCallback) {
+
+class MediaClient {
+  constructor(localMediaEl, remoteVideoEl, remoteAudioEl, mediasoupClient, socket, name, roomId, successCallback) {
+    console.log('new media client')
     this.name = name
     this.localMediaEl = localMediaEl
     this.remoteVideoEl = remoteVideoEl
     this.remoteAudioEl = remoteAudioEl
     this.mediasoupClient = mediasoupClient
+
+    socket.request = function request(type, data = {}) {
+      return new Promise((resolve, reject) => {
+        socket.emit(type, data, (data) => {
+          if (data.error) {
+            reject(data.error)
+          } else {
+            resolve(data)
+          }
+        })
+      })
+    }
 
     this.socket = socket
     this.producerTransport = null
@@ -63,7 +79,7 @@ class RoomClient {
   async createRoom(roomId) {
     await this.socket
       .request('createRoom', {
-        roomId
+        room_id: roomId
       })
       .catch((err) => {
         console.log('Create room error:', err)
@@ -71,10 +87,10 @@ class RoomClient {
   }
 
   join(name, roomId) {
-    return socket
+    return this.socket
       .request('join', {
         name,
-        roomId
+        room_id: roomId
       })
       .then(
         async function (e) {
@@ -140,7 +156,7 @@ class RoomClient {
         'produce',
         async function ({ kind, rtpParameters }, callback, errback) {
           try {
-            const { producerId } = await this.socket.request('produce', {
+            const { producer_id: producerId } = await this.socket.request('produce', {
               producerTransportId: this.producerTransport.id,
               kind,
               rtpParameters
@@ -203,7 +219,7 @@ class RoomClient {
 
       this.consumerTransport.on(
         'connectionstatechange',
-        async function (state) {
+        function (state) {
           switch (state) {
             case 'connecting':
               break
@@ -228,7 +244,7 @@ class RoomClient {
   initSockets() {
     this.socket.on(
       'consumerClosed',
-      function ({ consumerId }) {
+      function ({ consumer_id: consumerId }) {
         console.log('Closing consumer:', consumerId)
         this.removeConsumer(consumerId)
       }.bind(this)
@@ -244,8 +260,8 @@ class RoomClient {
       'newProducers',
       async function (data) {
         console.log('New producers', data)
-        for (const { producerId } of data) {
-          await this.consume(producerId)
+        for (const { producer_id: producerId, producer_data: producerData } of data) {
+          await this.consume(producerId, producerData)
         }
       }.bind(this)
     )
@@ -314,7 +330,6 @@ class RoomClient {
       stream = screen
         ? await navigator.mediaDevices.getDisplayMedia()
         : await navigator.mediaDevices.getUserMedia(mediaConstraints)
-      console.log(navigator.mediaDevices.getSupportedConstraints())
 
       const track = audio ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0]
       const params = {
@@ -349,40 +364,48 @@ class RoomClient {
 
       this.producers.set(producer.id, producer)
 
-      let elem
-      if (!audio) {
-        elem = document.createElement('video')
-        elem.srcObject = stream
-        elem.id = producer.id
-        elem.playsinline = false
-        elem.autoplay = true
-        elem.className = 'vid'
-        this.localMediaEl.appendChild(elem)
-        this.handleFS(elem.id)
-      }
+      // let elem
+      // if (!audio) {
+      //   elem = document.createElement('video')
+      //   elem.srcObject = stream
+      //   elem.id = producer.id
+      //   elem.playsinline = false
+      //   elem.autoplay = true
+      //   elem.className = 'vid'
+      //   this.localMediaEl.appendChild(elem)
+      //   this.handleFS(elem.id)
+      // }
 
       producer.on('trackended', () => {
         this.closeProducer(type)
       })
 
       producer.on('transportclose', () => {
-        console.log('Producer transport close')
-        if (!audio) {
-          elem.srcObject.getTracks().forEach(function (track) {
-            track.stop()
-          })
-          elem.parentNode.removeChild(elem)
+        console.log('Producer transport close');
+        switch (type) {
+          case mediaType.audio:
+            this.event(_EVENTS.stopAudio, stream)
+            break
+          case mediaType.video:
+            this.event(_EVENTS.stopVideo, stream)
+            break
+          default:
+            break
         }
         this.producers.delete(producer.id)
       })
 
       producer.on('close', () => {
         console.log('Closing producer')
-        if (!audio) {
-          elem.srcObject.getTracks().forEach(function (track) {
-            track.stop()
-          })
-          elem.parentNode.removeChild(elem)
+        switch (type) {
+          case mediaType.audio:
+            this.event(_EVENTS.stopAudio, stream)
+            break
+          case mediaType.video:
+            this.event(_EVENTS.stopVideo, stream)
+            break
+          default:
+            break
         }
         this.producers.delete(producer.id)
       })
@@ -391,10 +414,10 @@ class RoomClient {
 
       switch (type) {
         case mediaType.audio:
-          this.event(_EVENTS.startAudio)
+          this.event(_EVENTS.startAudio, stream)
           break
         case mediaType.video:
-          this.event(_EVENTS.startVideo)
+          this.event(_EVENTS.startVideo, stream)
           break
         case mediaType.screen:
           this.event(_EVENTS.startScreen)
@@ -408,32 +431,34 @@ class RoomClient {
   }
 
   // eslint-disable-next-line require-await
-  async consume(producerId) {
+  async consume(producerId, producerData) {
     // let info = await this.roomInfo()
+    const { name: producerUserId } = producerData;
 
     this.getConsumeStream(producerId).then(
       function ({ consumer, stream, kind }) {
+        consumer.producerUserId = producerUserId
         this.consumers.set(consumer.id, consumer)
 
-        let elem
-        if (kind === 'video') {
-          elem = document.createElement('video')
-          elem.srcObject = stream
-          elem.id = consumer.id
-          elem.playsinline = false
-          elem.autoplay = true
-          elem.className = 'vid'
-          this.remoteVideoEl.appendChild(elem)
-          this.handleFS(elem.id)
-        } else {
-          elem = document.createElement('audio')
-          elem.srcObject = stream
-          elem.id = consumer.id
-          elem.playsinline = false
-          elem.autoplay = true
-          this.remoteAudioEl.appendChild(elem)
-        }
-
+        // let elem
+        // if (kind === 'video') {
+        //   elem = document.createElement('video')
+        //   elem.srcObject = stream
+        //   elem.id = consumer.id
+        //   elem.playsinline = false
+        //   elem.autoplay = true
+        //   elem.className = 'vid'
+        //   this.remoteVideoEl.appendChild(elem)
+        //   this.handleFS(elem.id)
+        // } else {
+        //   elem = document.createElement('audio')
+        //   elem.srcObject = stream
+        //   elem.id = consumer.id
+        //   elem.playsinline = false
+        //   elem.autoplay = true
+        //   this.remoteAudioEl.appendChild(elem)
+        // }
+        this.event(_EVENTS.startRemoteMedia, { stream, kind, producerUserId })
         consumer.on(
           'trackended',
           function () {
@@ -468,6 +493,7 @@ class RoomClient {
       rtpParameters,
       codecOptions
     })
+    console.log(consumer)
 
     const stream = new MediaStream()
     stream.addTrack(consumer.track)
@@ -489,20 +515,20 @@ class RoomClient {
     console.log('Close producer', producerId)
 
     this.socket.emit('producerClosed', {
-      producerId
+      producer_id: producerId
     })
 
     this.producers.get(producerId).close()
     this.producers.delete(producerId)
     this.producerLabel.delete(type)
 
-    if (type !== mediaType.audio) {
-      const elem = document.getElementById(producerId)
-      elem.srcObject.getTracks().forEach(function (track) {
-        track.stop()
-      })
-      elem.parentNode.removeChild(elem)
-    }
+    // if (type !== mediaType.audio) {
+    //   const elem = document.getElementById(producerId)
+    //   elem.srcObject.getTracks().forEach(function (track) {
+    //     track.stop()
+    //   })
+    //   elem.parentNode.removeChild(elem)
+    // }
 
     switch (type) {
       case mediaType.audio:
@@ -540,11 +566,17 @@ class RoomClient {
   }
 
   removeConsumer(consumerId) {
-    const elem = document.getElementById(consumerId)
-    elem.srcObject.getTracks().forEach(function (track) {
-      track.stop()
-    })
-    elem.parentNode.removeChild(elem)
+    // const elem = document.getElementById(consumerId)
+    // elem.srcObject.getTracks().forEach(function (track) {
+    //   track.stop()
+    // })
+    // elem.parentNode.removeChild(elem)
+    const consumer = this.consumers.get(consumerId);
+    if (consumer) {
+      const producerUserId = consumer.producerUserId;
+      const kind = consumer.kind;
+      this.event(_EVENTS.stopRemoteMedia, { userId: producerUserId, kind })
+    }
 
     this.consumers.delete(consumerId)
   }
@@ -587,9 +619,9 @@ class RoomClient {
     return mediaType
   }
 
-  event(evt) {
+  event(evt, data = null) {
     if (this.eventListeners.has(evt)) {
-      this.eventListeners.get(evt).forEach((callback) => callback())
+      this.eventListeners.get(evt).forEach((callback) => callback(data))
     }
   }
 
@@ -620,13 +652,13 @@ class RoomClient {
   }
 
   showDevices() {
-    if (!this.isDevicesVisible) {
-      reveal(devicesList)
-      this.isDevicesVisible = true
-    } else {
-      hide(devicesList)
-      this.isDevicesVisible = false
-    }
+    // if (!this.isDevicesVisible) {
+    //   reveal(devicesList)
+    //   this.isDevicesVisible = true
+    // } else {
+    //   hide(devicesList)
+    //   this.isDevicesVisible = false
+    // }
   }
 
   handleFS(id) {
@@ -674,4 +706,4 @@ class RoomClient {
   }
 }
 
-export default RoomClient;
+export default MediaClient;
