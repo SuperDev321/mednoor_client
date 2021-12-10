@@ -52,7 +52,7 @@ export default {
 body
   overflow: hidden
 #app-content
-  margin: 0
+  margin: 0 !important
   padding-top: 50px
   height: 100vh
 </style>
